@@ -11,27 +11,17 @@
 #include <fcntl.h>
 #include "../src/lab.h"
 
+/* Helper function to explain the wait status of a child process */
 static void explain_waitpid(int status)
 {
     if (!WIFEXITED(status))
-    {
         fprintf(stderr, "Child exited with status %d\n", WEXITSTATUS(status));
-    }
-
     if (WIFSIGNALED(status))
-    {
-        fprintf(stderr, "Child exited via signal %d\n", WTERMSIG(status));
-    }
-
+        fprintf(stderr, "Child terminated by signal %d\n", WTERMSIG(status));
     if (WIFSTOPPED(status))
-    {
-        fprintf(stderr, "Child stopped by %d\n", WSTOPSIG(status));
-    }
-
+        fprintf(stderr, "Child stopped by signal %d\n", WSTOPSIG(status));
     if (WIFCONTINUED(status))
-    {
-        fprintf(stderr, "Child was resumed by delivery of SIGCONT\n");
-    }
+        fprintf(stderr, "Child continued after SIGCONT\n");
 }
 
 int main(int argc, char *argv[])
@@ -39,25 +29,20 @@ int main(int argc, char *argv[])
     parse_args(argc, argv);
     struct shell sh;
     sh_init(&sh);
-    char *line = (char *)NULL;
-    while ((line = readline(sh.prompt)))
-    {
-        // do nothing on blank lines don't save history or attempt to exec
+    char *line = NULL;
+    while ((line = readline(sh.prompt))) {
+        /* Trim the input; if blank, free and continue */
         line = trim_white(line);
-        if (!*line)
-        {
+        if (!*line) {
             free(line);
             continue;
         }
         add_history(line);
-        // check to see if we are launching a built in command
         char **cmd = cmd_parse(line);
-        if (!do_builtin(&sh, cmd))
-        {
+        if (!do_builtin(&sh, cmd)) {
             pid_t pid = fork();
-            if (pid == 0)
-            {
-                /*This is the child process*/
+            if (pid == 0) {
+                /* Child process: set up process group and restore default signals */
                 pid_t child = getpid();
                 setpgid(child, child);
                 tcsetpgrp(sh.shell_terminal, child);
@@ -67,34 +52,27 @@ int main(int argc, char *argv[])
                 signal(SIGTTIN, SIG_DFL);
                 signal(SIGTTOU, SIG_DFL);
                 execvp(cmd[0], cmd);
+                perror("execvp failed");
                 exit(EXIT_FAILURE);
             }
-            else if (pid < 0)
-            {
-                // If fork failed we are in trouble!
-                perror("fork return < 0 Process creation failed!");
+            else if (pid < 0) {
+                perror("fork failed");
                 abort();
             }
-
-            /*
-            This is in the parent put the child process into its own
-            process group and give it control of the terminal
-            to avoid a race condition
-            */
-            // printf("shell:%d , child%d\n",sh.shell_pgid, pid);
+            /* Parent process: put child in its own group and wait for it */
             setpgid(pid, pid);
             tcsetpgrp(sh.shell_terminal, pid);
             int status;
-            int rval = waitpid(pid, &status, 0);
-            if (rval == -1)
-            {
-                fprintf(stderr, "Wait pid failed with -1\n");
-		        explain_waitpid(status);
+            if (waitpid(pid, &status, 0) == -1) {
+                perror("waitpid failed");
+                explain_waitpid(status);
             }
             cmd_free(cmd);
-            // get control of the shell
+            /* Return terminal control to shell */
             tcsetpgrp(sh.shell_terminal, sh.shell_pgid);
         }
+        free(line);
     }
     sh_destroy(&sh);
+    return 0;
 }
