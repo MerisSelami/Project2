@@ -1,5 +1,6 @@
 #ifndef LAB_H
 #define LAB_H
+
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/types.h>
@@ -8,122 +9,101 @@
 
 #define lab_VERSION_MAJOR 1
 #define lab_VERSION_MINOR 0
-#define UNUSED(x) (void)x;
+#define UNUSED(x) (void)(x);
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-  struct shell
-  {
+struct shell {
     int shell_is_interactive;
     pid_t shell_pgid;
     struct termios shell_tmodes;
     int shell_terminal;
     char *prompt;
-  };
+};
 
+/**
+ * @brief Returns the shell prompt. If the environment variable (env) is set,
+ * its value is used; otherwise a default prompt "shell>" is returned.
+ * The returned string is allocated on the heap and must be freed by the caller.
+ *
+ * @param env The name of the environment variable to check.
+ * @return char* The prompt string.
+ */
+char *get_prompt(const char *env);
 
+/**
+ * @brief Changes the current working directory.
+ * If no argument is provided (i.e. the command is just "cd"), the user's home directory is used.
+ *
+ * @param dir The argument vector containing the command and its arguments.
+ * @return int Returns 0 on success or -1 on error.
+ */
+int change_dir(char **dir);
 
-  /**
-   * @brief Set the shell prompt. This function will attempt to load a prompt
-   * from the requested environment variable, if the environment variable is
-   * not set a default prompt of "shell>" is returned.  This function calls
-   * malloc internally and the caller must free the resulting string.
-   *
-   * @param env The environment variable
-   * @return const char* The prompt
-   */
-  char *get_prompt(const char *env);
+/**
+ * @brief Parses a command line string into an array of tokens.
+ * Tokens are separated by whitespace. The resulting array is terminated with a NULL pointer.
+ * Memory for both the array and tokens is allocated on the heap.
+ *
+ * @param line The input command line string.
+ * @return char** Array of token strings.
+ */
+char **cmd_parse(char const *line);
 
-  /**
-   * Changes the current working directory of the shell. Uses the linux system
-   * call chdir. With no arguments the users home directory is used as the
-   * directory to change to.
-   *
-   * @param dir The directory to change to
-   * @return  On success, zero is returned.  On error, -1 is returned, and
-   * errno is set to indicate the error.
-   */
-  int change_dir(char **dir);
+/**
+ * @brief Frees the memory allocated by cmd_parse.
+ *
+ * @param line The array of token strings to free.
+ */
+void cmd_free(char ** line);
 
-  /**
-   * @brief Convert line read from the user into to format that will work with
-   * execvp. We limit the number of arguments to ARG_MAX loaded from sysconf.
-   * This function allocates memory that must be reclaimed with the cmd_free
-   * function.
-   *
-   * @param line The line to process
-   *
-   * @return The line read in a format suitable for exec
-   */
-  char **cmd_parse(char const *line);
+/**
+ * @brief Trims leading and trailing whitespace from a string.
+ * This function modifies the string in place.
+ *
+ * @param line The string to trim.
+ * @return char* The trimmed string.
+ */
+char *trim_white(char *line);
 
-  /**
-   * @brief Free the line that was constructed with parse_cmd
-   *
-   * @param line the line to free
-   */
-  void cmd_free(char ** line);
+/**
+ * @brief Checks if the first token of the command is a built-in command (exit, cd, history).
+ * If so, it handles the command and returns true. Otherwise, returns false.
+ *
+ * @param sh Pointer to the shell structure.
+ * @param argv Array of token strings representing the command.
+ * @return bool True if a built-in command was executed.
+ */
+bool do_builtin(struct shell *sh, char **argv);
 
-  /**
-   * @brief Trim the whitespace from the start and end of a string.
-   * For example "   ls -a   " becomes "ls -a". This function modifies
-   * the argument line so that all printable chars are moved to the
-   * front of the string
-   *
-   * @param line The line to trim
-   * @return The new line with no whitespace
-   */
-  char *trim_white(char *line);
+/**
+ * @brief Initializes the shell for interactive use.
+ * This includes setting terminal attributes, process group control, and loading the prompt.
+ *
+ * @param sh Pointer to the shell structure.
+ */
+void sh_init(struct shell *sh);
 
+/**
+ * @brief Cleans up shell resources and restores terminal settings.
+ *
+ * @param sh Pointer to the shell structure.
+ */
+void sh_destroy(struct shell *sh);
 
-  /**
-   * @brief Takes an argument list and checks if the first argument is a
-   * built in command such as exit, cd, jobs, etc. If the command is a
-   * built in command this function will handle the command and then return
-   * true. If the first argument is NOT a built in command this function will
-   * return false.
-   *
-   * @param sh The shell
-   * @param argv The command to check
-   * @return True if the command was a built in command
-   */
-  bool do_builtin(struct shell *sh, char **argv);
-
-  /**
-   * @brief Initialize the shell for use. Allocate all data structures
-   * Grab control of the terminal and put the shell in its own
-   * process group. NOTE: This function will block until the shell is
-   * in its own program group. Attaching a debugger will always cause
-   * this function to fail because the debugger maintains control of
-   * the subprocess it is debugging.
-   *
-   * @param sh
-   */
-  void sh_init(struct shell *sh);
-
-  /**
-   * @brief Destroy shell. Free any allocated memory and resources and exit
-   * normally.
-   *
-   * @param sh
-   */
-  void sh_destroy(struct shell *sh);
-
-  /**
-   * @brief Parse command line args from the user when the shell was launched
-   *
-   * @param argc Number of args
-   * @param argv The arg array
-   */
-  void parse_args(int argc, char **argv);
-
-
+/**
+ * @brief Parses command line arguments provided at shell launch.
+ * If the -v flag is found, the version is printed and the program exits.
+ *
+ * @param argc The number of command line arguments.
+ * @param argv The argument vector.
+ */
+void parse_args(int argc, char **argv);
 
 #ifdef __cplusplus
-} // extern "C"
+}
 #endif
 
 #endif
